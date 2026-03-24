@@ -6,3 +6,4 @@ rarfile
 patool
 streamlit
 altair<5
+onnxruntime
