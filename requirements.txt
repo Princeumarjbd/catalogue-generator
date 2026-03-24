@@ -1,0 +1,7 @@
+rembg
+reportlab
+pillow
+pandas
+rarfile
+patool
+streamlit
