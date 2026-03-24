@@ -5,3 +5,4 @@ pandas
 rarfile
 patool
 streamlit
+altair<5
