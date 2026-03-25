@@ -4,6 +4,7 @@ pillow
 pandas
 rarfile
 patool
-streamlit==1.32.2
+streamlit==1.36.0
+tornado==6.3.3
 altair<5
 onnxruntime
