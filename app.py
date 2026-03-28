@@ -18,13 +18,12 @@ csv_upload = st.file_uploader("1. Upload CSV File", type=['csv'])
 zip_upload = st.file_uploader("2. Upload Images (ZIP File)", type=['zip'])
 logo_upload = st.file_uploader("3. Upload Logo (Transparent PNG)", type=['png'])
 
-# --- Placement Dictionary (X, Y Coordinates & Scale) ---
-# Yahan hum set karte hain ke logo kahan aur kitna bara lagega
+# --- Updated Placement Dictionary (Shape Smart Scale & Adjusted X, Y) ---
 PLACEMENT_RULES = {
-    'polo': {'scale': 0.15, 'x_pos': 0.65, 'y_pos': 0.35}, # x=0.65 means wearer's left chest
-    't-shirt': {'scale': 0.25, 'x_pos': 0.50, 'y_pos': 0.35}, # x=0.50 means center
-    'cap': {'scale': 0.20, 'x_pos': 0.50, 'y_pos': 0.40},
-    'bottle': {'scale': 0.30, 'x_pos': 0.50, 'y_pos': 0.60}
+    'polo': {'scale_square': 0.18, 'scale_wide': 0.28, 'x_pos': 0.68, 'y_pos': 0.30}, 
+    't-shirt': {'scale_square': 0.25, 'scale_wide': 0.38, 'x_pos': 0.50, 'y_pos': 0.28}, 
+    'cap': {'scale_square': 0.22, 'scale_wide': 0.32, 'x_pos': 0.50, 'y_pos': 0.36},
+    'bottle': {'scale_square': 0.35, 'scale_wide': 0.48, 'x_pos': 0.50, 'y_pos': 0.55} 
 }
 
 # --- Generate Button ---
@@ -60,7 +59,7 @@ if st.button("Generate Catalogue PDF"):
             df = pd.read_csv("temp_data.csv")
 
             # 3. Process Images
-            st.info("Removing backgrounds, adding logos, and aligning...")
+            st.info("Applying smart scaling and real-retail alignment...")
             processed_images = {}
             CANVAS_SIZE = 800
             MAX_PRODUCT_SIZE = 650
@@ -83,13 +82,22 @@ if st.button("Generate Catalogue PDF"):
                     new_w, new_h = int(img_w * ratio), int(img_h * ratio)
                     resized_product = output_img.resize((new_w, new_h), Image.Resampling.LANCZOS)
 
-                    # --- ADD LOGO LOGIC ---
+                    # --- ADD LOGO LOGIC (WITH SHAPE DETECTION) ---
                     if logo_img and product_type in PLACEMENT_RULES:
                         rule = PLACEMENT_RULES[product_type]
                         l_w, l_h = logo_img.size
                         
-                        # Scale logo relative to product width
-                        target_l_w = int(new_w * rule['scale'])
+                        # Smart Shape Detection (Aspect Ratio)
+                        aspect_ratio = l_w / l_h
+                        if aspect_ratio > 1.5:
+                            # It's a Wide Logo (e.g. ONLY BULLS)
+                            scale_factor = rule['scale_wide']
+                        else:
+                            # It's a Compact/Square Logo (e.g. Bitcoin)
+                            scale_factor = rule['scale_square']
+                        
+                        # Scale logo relative to product width using the smart factor
+                        target_l_w = int(new_w * scale_factor)
                         logo_ratio = target_l_w / l_w
                         target_l_h = int(l_h * logo_ratio)
                         resized_logo = logo_img.resize((target_l_w, target_l_h), Image.Resampling.LANCZOS)
@@ -130,8 +138,8 @@ if st.button("Generate Catalogue PDF"):
                     c.showPage()
             c.save()
 
-            st.success("Catalogue with Logos Generated Successfully! 🎉")
+            st.success("Catalogue with Retail Branding Generated Successfully! 🎉")
             with open(pdf_file, "rb") as pdf:
-                st.download_button("📥 Download PDF", data=pdf, file_name="Catalogue_Phase2.pdf", mime="application/pdf")
+                st.download_button("📥 Download Final PDF", data=pdf, file_name="Catalogue_Phase2_Final.pdf", mime="application/pdf")
     else:
         st.error("Please upload CSV and ZIP files to proceed.")
