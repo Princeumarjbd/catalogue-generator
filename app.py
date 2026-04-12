@@ -36,7 +36,7 @@ if st.button("Generate Catalogue PDF"):
                 zip_ref.extractall(extracted_folder)
                 
             image_dir = extracted_folder
-            # Find the actual folder containing images in case of nested folders inside ZIP
+            # Find the actual folder containing images
             for root, dirs, files in os.walk(extracted_folder):
                 if any(f.lower().endswith(('.png', '.jpg', '.jpeg')) for f in files):
                     image_dir = root
@@ -44,7 +44,6 @@ if st.button("Generate Catalogue PDF"):
 
             # 2. Read CSV 
             df = pd.read_csv("temp_data.csv")
-            # Strip whitespace from column names just in case
             df.columns = df.columns.str.strip()
 
             # 3. Process Images
@@ -54,31 +53,40 @@ if st.button("Generate Catalogue PDF"):
             MAX_PRODUCT_SIZE = 450
 
             for index, row in df.iterrows():
-                # Fetch exactly based on CSV column names
                 filename = str(row.get('Image File', '')).strip()
                 
+                # SAFETY CHECK: Skip empty rows or 'nan' values in CSV
+                if not filename or filename.lower() == 'nan':
+                    continue
+                
                 img_path = os.path.join(image_dir, filename)
-                if os.path.exists(img_path) and filename not in processed_images:
+                
+                # SAFETY CHECK: Ensure it is actually a file and not a directory
+                if os.path.isfile(img_path) and filename not in processed_images:
                     
-                    # Remove Background to ensure clean whitespace
-                    input_img = Image.open(img_path).convert("RGBA")
-                    output_img = remove(input_img)
-                    bbox = output_img.getbbox()
-                    if bbox: output_img = output_img.crop(bbox)
+                    try:
+                        # Remove Background to ensure clean whitespace
+                        input_img = Image.open(img_path).convert("RGBA")
+                        output_img = remove(input_img)
+                        bbox = output_img.getbbox()
+                        if bbox: output_img = output_img.crop(bbox)
 
-                    img_w, img_h = output_img.size
-                    ratio = min(MAX_PRODUCT_SIZE / img_w, MAX_PRODUCT_SIZE / img_h)
-                    new_w, new_h = int(img_w * ratio), int(img_h * ratio)
-                    resized_product = output_img.resize((new_w, new_h), Image.Resampling.LANCZOS)
+                        img_w, img_h = output_img.size
+                        ratio = min(MAX_PRODUCT_SIZE / img_w, MAX_PRODUCT_SIZE / img_h)
+                        new_w, new_h = int(img_w * ratio), int(img_h * ratio)
+                        resized_product = output_img.resize((new_w, new_h), Image.Resampling.LANCZOS)
 
-                    # Center product on square canvas for uniform grid weight
-                    final_canvas = Image.new("RGBA", (CANVAS_SIZE, CANVAS_SIZE), (255, 255, 255, 0))
-                    paste_x, paste_y = (CANVAS_SIZE - new_w) // 2, (CANVAS_SIZE - new_h) // 2
-                    final_canvas.paste(resized_product, (paste_x, paste_y), resized_product)
+                        # Center product on square canvas for uniform grid weight
+                        final_canvas = Image.new("RGBA", (CANVAS_SIZE, CANVAS_SIZE), (255, 255, 255, 0))
+                        paste_x, paste_y = (CANVAS_SIZE - new_w) // 2, (CANVAS_SIZE - new_h) // 2
+                        final_canvas.paste(resized_product, (paste_x, paste_y), resized_product)
 
-                    temp_png = f"temp_{filename.split('.')[0]}.png"
-                    final_canvas.save(temp_png, format="PNG")
-                    processed_images[filename] = temp_png
+                        temp_png = f"temp_{filename.split('.')[0]}.png"
+                        final_canvas.save(temp_png, format="PNG")
+                        processed_images[filename] = temp_png
+                    except Exception as e:
+                        # If an image is corrupted, just skip it and don't crash the whole app
+                        continue
 
             # 4. Generate Multi-Page Grid PDF
             st.info("Constructing Multi-Page PDF...")
@@ -102,6 +110,9 @@ if st.button("Generate Catalogue PDF"):
                 sku = str(row.get('SKU', '')).strip()
                 image_name = str(row.get('Image File', '')).strip()
 
+                if not image_name or image_name.lower() == 'nan':
+                    continue
+
                 if image_name in processed_images:
                     if item_count > 0 and item_count % 4 == 0:
                         c.showPage()
@@ -119,15 +130,14 @@ if st.button("Generate Catalogue PDF"):
                     c.drawString(name_x, pos_y - 20, product_name)
                     
                     # Draw SKU instead of Price (Regular)
-                    if sku and sku != 'nan':
+                    if sku and sku.lower() != 'nan':
                         c.setFont("Helvetica", 10)
                         sku_text = f"SKU: {sku}"
                         sku_width = c.stringWidth(sku_text, "Helvetica", 10)
                         sku_x = pos_x + (img_size - sku_width) / 2
-                        # Slightly lighter color for SKU
                         c.setFillColorRGB(0.3, 0.3, 0.3) 
                         c.drawString(sku_x, pos_y - 35, sku_text)
-                        c.setFillColorRGB(0, 0, 0) # Reset color to black
+                        c.setFillColorRGB(0, 0, 0)
                     
                     item_count += 1
             
