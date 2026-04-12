@@ -9,33 +9,19 @@ import zipfile
 import shutil
 
 # --- Website Design ---
-st.set_page_config(page_title="Catalogue Generator Phase 2", page_icon="📄")
-st.title("Automated Product Catalogue Generator")
-st.write("Upload your CSV, Images (ZIP), and a Logo (PNG) below.")
+st.set_page_config(page_title="Phase 3: Automated Catalogue", page_icon="📄")
+st.title("Automated Grid-Based Catalogue Generator")
+st.write("Upload your Master CSV and Images (ZIP) to generate the final catalogue.")
 
 # --- File Uploaders ---
-csv_upload = st.file_uploader("1. Upload CSV File", type=['csv'])
-zip_upload = st.file_uploader("2. Upload Images (ZIP File)", type=['zip'])
-logo_upload = st.file_uploader("3. Upload Logo (Transparent PNG)", type=['png'])
-
-# --- Updated Placement Dictionary (Shape Smart Scale & Adjusted X, Y) ---
-PLACEMENT_RULES = {
-    'polo': {'scale_square': 0.18, 'scale_wide': 0.28, 'x_pos': 0.68, 'y_pos': 0.30}, 
-    't-shirt': {'scale_square': 0.25, 'scale_wide': 0.38, 'x_pos': 0.50, 'y_pos': 0.28}, 
-    'cap': {'scale_square': 0.22, 'scale_wide': 0.32, 'x_pos': 0.50, 'y_pos': 0.36},
-    'bottle': {'scale_square': 0.35, 'scale_wide': 0.48, 'x_pos': 0.50, 'y_pos': 0.55} 
-}
+csv_upload = st.file_uploader("1. Upload Master CSV File", type=['csv'])
+zip_upload = st.file_uploader("2. Upload Final Images (ZIP File)", type=['zip'])
 
 # --- Generate Button ---
 if st.button("Generate Catalogue PDF"):
     if csv_upload and zip_upload:
-        with st.spinner('Processing... Please wait!'):
+        with st.spinner('Building grid layout and compiling PDF... Please wait!'):
             
-            # Read Logo if uploaded
-            logo_img = None
-            if logo_upload:
-                logo_img = Image.open(logo_upload).convert("RGBA")
-
             # Save temporary files
             with open("temp_data.csv", "wb") as f: f.write(csv_upload.getbuffer())
             with open("temp_images.zip", "wb") as f: f.write(zip_upload.getbuffer())
@@ -50,28 +36,31 @@ if st.button("Generate Catalogue PDF"):
                 zip_ref.extractall(extracted_folder)
                 
             image_dir = extracted_folder
+            # Find the actual folder containing images in case of nested folders inside ZIP
             for root, dirs, files in os.walk(extracted_folder):
                 if any(f.lower().endswith(('.png', '.jpg', '.jpeg')) for f in files):
                     image_dir = root
                     break
 
-            # 2. Read CSV
+            # 2. Read CSV 
             df = pd.read_csv("temp_data.csv")
+            # Strip whitespace from column names just in case
+            df.columns = df.columns.str.strip()
 
             # 3. Process Images
-            st.info("Applying smart scaling and real-retail alignment...")
+            st.info("Formatting images for uniform scaling...")
             processed_images = {}
-            CANVAS_SIZE = 800
-            MAX_PRODUCT_SIZE = 650
+            CANVAS_SIZE = 600
+            MAX_PRODUCT_SIZE = 450
 
             for index, row in df.iterrows():
-                filename = str(row['image_filename']).strip()
-                product_type = str(row.get('Product Type', '')).lower().strip()
+                # Fetch exactly based on CSV column names
+                filename = str(row.get('Image File', '')).strip()
                 
                 img_path = os.path.join(image_dir, filename)
                 if os.path.exists(img_path) and filename not in processed_images:
                     
-                    # Remove Background
+                    # Remove Background to ensure clean whitespace
                     input_img = Image.open(img_path).convert("RGBA")
                     output_img = remove(input_img)
                     bbox = output_img.getbbox()
@@ -82,34 +71,7 @@ if st.button("Generate Catalogue PDF"):
                     new_w, new_h = int(img_w * ratio), int(img_h * ratio)
                     resized_product = output_img.resize((new_w, new_h), Image.Resampling.LANCZOS)
 
-                    # --- ADD LOGO LOGIC (WITH SHAPE DETECTION) ---
-                    if logo_img and product_type in PLACEMENT_RULES:
-                        rule = PLACEMENT_RULES[product_type]
-                        l_w, l_h = logo_img.size
-                        
-                        # Smart Shape Detection (Aspect Ratio)
-                        aspect_ratio = l_w / l_h
-                        if aspect_ratio > 1.5:
-                            # It's a Wide Logo (e.g. ONLY BULLS)
-                            scale_factor = rule['scale_wide']
-                        else:
-                            # It's a Compact/Square Logo (e.g. Bitcoin)
-                            scale_factor = rule['scale_square']
-                        
-                        # Scale logo relative to product width using the smart factor
-                        target_l_w = int(new_w * scale_factor)
-                        logo_ratio = target_l_w / l_w
-                        target_l_h = int(l_h * logo_ratio)
-                        resized_logo = logo_img.resize((target_l_w, target_l_h), Image.Resampling.LANCZOS)
-                        
-                        # Calculate positions
-                        logo_x = int(new_w * rule['x_pos']) - (target_l_w // 2)
-                        logo_y = int(new_h * rule['y_pos']) - (target_l_h // 2)
-                        
-                        # Paste logo onto the product
-                        resized_product.paste(resized_logo, (logo_x, logo_y), resized_logo)
-
-                    # Paste product onto final canvas
+                    # Center product on square canvas for uniform grid weight
                     final_canvas = Image.new("RGBA", (CANVAS_SIZE, CANVAS_SIZE), (255, 255, 255, 0))
                     paste_x, paste_y = (CANVAS_SIZE - new_w) // 2, (CANVAS_SIZE - new_h) // 2
                     final_canvas.paste(resized_product, (paste_x, paste_y), resized_product)
@@ -118,28 +80,61 @@ if st.button("Generate Catalogue PDF"):
                     final_canvas.save(temp_png, format="PNG")
                     processed_images[filename] = temp_png
 
-            # 4. Generate PDF
-            st.info("Creating Final PDF...")
-            pdf_file = "Final_Catalogue_Phase2.pdf"
+            # 4. Generate Multi-Page Grid PDF
+            st.info("Constructing Multi-Page PDF...")
+            pdf_file = "Final_Catalogue_Phase3.pdf"
             c = canvas.Canvas(pdf_file, pagesize=A4)
             width, height = A4
-            img_width, img_height = 450, 450
-            x_pos, y_pos = (width - img_width) / 2, (height - img_height) / 2 + 50
-
+            
+            # Grid Layout Coordinates (4 spots)
+            img_size = 230
+            grid_positions = [
+                (45, height - 340),              # Top Left
+                (width / 2 + 25, height - 340),  # Top Right
+                (45, 130),                       # Bottom Left
+                (width / 2 + 25, 130)            # Bottom Right
+            ]
+            
+            item_count = 0
+            
             for index, row in df.iterrows():
-                product_name = str(row['product_name']).strip()
-                image_name = str(row['image_filename']).strip()
+                product_name = str(row.get('Product Name', '')).strip()
+                sku = str(row.get('SKU', '')).strip()
+                image_name = str(row.get('Image File', '')).strip()
 
                 if image_name in processed_images:
-                    c.drawImage(processed_images[image_name], x_pos, y_pos, width=img_width, height=img_height, mask='auto', preserveAspectRatio=True)
-                    c.setFont("Helvetica-Bold", 22)
-                    text_width = c.stringWidth(product_name, "Helvetica-Bold", 22)
-                    c.drawString((width - text_width) / 2, y_pos - 40, product_name)
-                    c.showPage()
+                    if item_count > 0 and item_count % 4 == 0:
+                        c.showPage()
+                        item_count = 0 
+                    
+                    pos_x, pos_y = grid_positions[item_count]
+                    
+                    # Draw Product Image
+                    c.drawImage(processed_images[image_name], pos_x, pos_y, width=img_size, height=img_size, mask='auto', preserveAspectRatio=True)
+                    
+                    # Draw Product Name (Bold)
+                    c.setFont("Helvetica-Bold", 12)
+                    name_width = c.stringWidth(product_name, "Helvetica-Bold", 12)
+                    name_x = pos_x + (img_size - name_width) / 2
+                    c.drawString(name_x, pos_y - 20, product_name)
+                    
+                    # Draw SKU instead of Price (Regular)
+                    if sku and sku != 'nan':
+                        c.setFont("Helvetica", 10)
+                        sku_text = f"SKU: {sku}"
+                        sku_width = c.stringWidth(sku_text, "Helvetica", 10)
+                        sku_x = pos_x + (img_size - sku_width) / 2
+                        # Slightly lighter color for SKU
+                        c.setFillColorRGB(0.3, 0.3, 0.3) 
+                        c.drawString(sku_x, pos_y - 35, sku_text)
+                        c.setFillColorRGB(0, 0, 0) # Reset color to black
+                    
+                    item_count += 1
+            
             c.save()
 
-            st.success("Catalogue with Retail Branding Generated Successfully! 🎉")
+            st.success("Phase 3 Grid Catalogue Generated Successfully! 🎉")
             with open(pdf_file, "rb") as pdf:
-                st.download_button("📥 Download Final PDF", data=pdf, file_name="Catalogue_Phase2_Final.pdf", mime="application/pdf")
+                st.download_button("📥 Download Final PDF", data=pdf, file_name="Catalogue_Phase3_Final.pdf", mime="application/pdf")
     else:
         st.error("Please upload CSV and ZIP files to proceed.")
